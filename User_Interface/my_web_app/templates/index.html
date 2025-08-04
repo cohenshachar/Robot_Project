@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Maze Solver</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f5f7fa;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      max-width: 700px;
+      width: 100%;
+    }
+
+    h2 {
+      margin-top: 0;
+    }
+
+    #mazeGrid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px auto;
+    }
+
+    .grid-row {
+      display: flex;
+    }
+
+    .maze-cell {
+      position: relative;
+      width: 60px;
+      height: 60px;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      background-color: #f9f9f9;
+    }
+
+    .wall {
+      position: absolute;
+      background-color: #444;
+      transition: background-color 0.2s ease;
+    }
+
+    .wall:not(.blocked) {
+      background-color: lightgreen;
+    }
+
+    .wall.locked {
+      background-color: #222 !important;
+      cursor: default !important;
+    }
+
+    .wall.top {
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .wall.bottom {
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .wall.left {
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .wall.right {
+      top: 0;
+      right: 0;
+      width: 4px;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .wall:hover {
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .start-cell {
+      background-color: #d1f4f6 !important;
+    }
+
+    .end-cell {
+      background-color: #ffe1ec !important;
+    }
+
+    .path-cell {
+      background-color: #fff9c4 !important;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+
+    input[type="text"] {
+      padding: 8px;
+      margin-left: 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      width: 100px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      font-weight: bold;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    #result {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #fff;
+      border: 2px solid #eee;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      color: #333;
+    }
+
+    .actions {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .btn-clear {
+      background-color: #bbb;
+    }
+
+    .btn-clear:hover {
+      background-color: #999;
+    }
+
+    .btn-home {
+      background-color: #ddd;
+      color: #333;
+    }
+
+    .btn-home:hover {
+      background-color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="btn-home" style="padding: 8px 16px; display: inline-block; font-weight: bold; border-radius: 6px; text-decoration: none;">← Back to Home</a>
+    <h2>Draw Maze Walls</h2>
+    <p>Click or drag to <strong>open</strong> walls. Everything starts blocked (gray).</p>
+    <p>Right click or drag to <strong>close</strong> walls.</p>
+    <p>The default start point of the robot is (1,1)</p>
+
+    <form id="mazeForm">
+      <div id="mazeGrid"></div>
+
+      <label>End Position (row,col): <input type="text" id="end" placeholder="e.g. 3,3" /></label>
+
+      <div class="actions">
+        <button type="submit">Solve</button>
+        <button type="button" class="btn-clear" onclick="clearMaze()">Clear Maze</button>
+      </div>
+    </form>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    let mouseDown = false;
+    let mouseButton = 0;
+
+    document.body.addEventListener("mousedown", (e) => {
+      mouseDown = true;
+      mouseButton = e.button;
+    });
+
+    document.body.addEventListener("mouseup", () => {
+      mouseDown = false;
+    });
+
+    const gridSize = 10;
+    const gridDiv = document.getElementById("mazeGrid");
+
+    for (let i = 0; i < gridSize; i++) {
+      const rowDiv = document.createElement("div");
+      rowDiv.classList.add("grid-row");
+
+      for (let j = 0; j < gridSize; j++) {
+        const cell = document.createElement("div");
+        cell.classList.add("maze-cell");
+        cell.dataset.row = i;
+        cell.dataset.col = j;
+
+        ["top", "bottom", "left", "right"].forEach((dir) => {
+          const wall = document.createElement("div");
+          wall.classList.add("wall", dir, "blocked");
+
+          if (
+            (dir === "top" && i === 0) ||
+            (dir === "bottom" && i === gridSize - 1) ||
+            (dir === "left" && j === 0) ||
+            (dir === "right" && j === gridSize - 1) ||
+            (i === 0 && j === 0 && dir === "right") ||
+            (i === 0 && j === 1 && dir === "left")
+          ) {
+            wall.classList.add("locked");
+          }
+
+          if (!wall.classList.contains("locked")) {
+            const setWallState = (block) => {
+              wall.classList.toggle("blocked", block);
+              const dRow = { top: -1, bottom: 1, left: 0, right: 0 };
+              const dCol = { top: 0, bottom: 0, left: -1, right: 1 };
+              const opposite = { top: "bottom", bottom: "top", left: "right", right: "left" };
+
+              const ni = i + dRow[dir];
+              const nj = j + dCol[dir];
+
+              if (ni >= 0 && ni < gridSize && nj >= 0 && nj < gridSize) {
+                const neighbor = document.querySelector(`.maze-cell[data-row="${ni}"][data-col="${nj}"]`);
+                const neighborWall = neighbor.querySelector(`.wall.${opposite[dir]}`);
+                neighborWall.classList.toggle("blocked", block);
+              }
+            };
+
+            wall.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              setWallState(e.button !== 0);
+            });
+
+            wall.addEventListener("mouseover", () => {
+              if (mouseDown) {
+                setWallState(mouseButton !== 0);
+              }
+            });
+          }
+
+          cell.appendChild(wall);
+        });
+
+        if (i === 0 && j === 0) {
+          cell.classList.add("start-cell");
+        }
+
+        rowDiv.appendChild(cell);
+      }
+
+      gridDiv.appendChild(rowDiv);
+    }
+
+    document.getElementById("mazeForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const mazeGrid = [];
+      for (let i = 0; i < gridSize; i++) {
+        const row = [];
+        for (let j = 0; j < gridSize; j++) {
+          const cell = document.querySelector(`.maze-cell[data-row="${i}"][data-col="${j}"]`);
+          let directions = "";
+          if (!cell.querySelector(".top").classList.contains("blocked")) directions += "U";
+          if (!cell.querySelector(".bottom").classList.contains("blocked")) directions += "D";
+          if (!cell.querySelector(".left").classList.contains("blocked")) directions += "L";
+          if (!cell.querySelector(".right").classList.contains("blocked")) directions += "R";
+          if (directions === "") directions = "X";
+          row.push(directions);
+        }
+        mazeGrid.push(row);
+      }
+
+      const start = [1, 1];
+      const end = document.getElementById("end").value.split(",").map(Number);
+
+      document.querySelectorAll('.maze-cell').forEach(cell => {
+        cell.classList.remove('start-cell', 'end-cell', 'path-cell');
+      });
+
+      const startCell = document.querySelector(`.maze-cell[data-row="${start[0]-1}"][data-col="${start[1]-1}"]`);
+      const endCell = document.querySelector(`.maze-cell[data-row="${end[0]-1}"][data-col="${end[1]-1}"]`);
+      if (startCell) startCell.classList.add("start-cell");
+      if (endCell) endCell.classList.add("end-cell");
+
+      const response = await fetch("/solve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maze_grid: mazeGrid, start, end })
+      });
+
+      const data = await response.json();
+      const resultDiv = document.getElementById("result");
+
+      if (data.status === "ok") {
+        resultDiv.innerHTML = `<h3>Directions:</h3><pre>${data.directions.join(" → ")}</pre>`;
+
+        // Save state
+        localStorage.setItem("maze_grid", JSON.stringify(mazeGrid));
+        localStorage.setItem("maze_start", JSON.stringify(start));
+        localStorage.setItem("maze_end", JSON.stringify(end));
+        localStorage.setItem("maze_path", JSON.stringify(data.path || []));
+        localStorage.setItem("maze_directions", JSON.stringify(data.directions || []));
+
+        if (data.path) {
+          data.path.forEach(([row, col]) => {
+            const r = row - 1;
+            const c = col - 1;
+            if ((r === start[0]-1 && c === start[1]-1) || (r === end[0]-1 && c === end[1]-1)) return;
+            const cell = document.querySelector(`.maze-cell[data-row="${r}"][data-col="${c}"]`);
+            if (cell) cell.classList.add("path-cell");
+          });
+        }
+      } else {
+        resultDiv.innerHTML = `<p><strong>${data.message}</strong></p>`;
+      }
+    });
+
+    function clearMaze() {
+      localStorage.clear();
+      window.location.reload();
+    }
+
+    window.addEventListener("load", () => {
+      const savedGrid = JSON.parse(localStorage.getItem("maze_grid"));
+      const savedStart = JSON.parse(localStorage.getItem("maze_start"));
+      const savedEnd = JSON.parse(localStorage.getItem("maze_end"));
+      const savedPath = JSON.parse(localStorage.getItem("maze_path"));
+      const savedDirections = JSON.parse(localStorage.getItem("maze_directions"));
+
+      if (savedGrid && savedEnd) {
+        for (let i = 0; i < gridSize; i++) {
+          for (let j = 0; j < gridSize; j++) {
+            const cell = document.querySelector(`.maze-cell[data-row="${i}"][data-col="${j}"]`);
+            const directions = savedGrid[i][j];
+            if (directions === "X") continue;
+            if (!directions.includes("U")) cell.querySelector(".top").classList.add("blocked");
+            else cell.querySelector(".top").classList.remove("blocked");
+            if (!directions.includes("D")) cell.querySelector(".bottom").classList.add("blocked");
+            else cell.querySelector(".bottom").classList.remove("blocked");
+            if (!directions.includes("L")) cell.querySelector(".left").classList.add("blocked");
+            else cell.querySelector(".left").classList.remove("blocked");
+            if (!directions.includes("R")) cell.querySelector(".right").classList.add("blocked");
+            else cell.querySelector(".right").classList.remove("blocked");
+          }
+        }
+
+        const startCell = document.querySelector(`.maze-cell[data-row="${savedStart[0]-1}"][data-col="${savedStart[1]-1}"]`);
+        const endCell = document.querySelector(`.maze-cell[data-row="${savedEnd[0]-1}"][data-col="${savedEnd[1]-1}"]`);
+        if (startCell) startCell.classList.add("start-cell");
+        if (endCell) endCell.classList.add("end-cell");
+
+        if (savedPath) {
+          savedPath.forEach(([row, col]) => {
+            const r = row - 1;
+            const c = col - 1;
+            if ((r === savedStart[0]-1 && c === savedStart[1]-1) || (r === savedEnd[0]-1 && c === savedEnd[1]-1)) return;
+            const cell = document.querySelector(`.maze-cell[data-row="${r}"][data-col="${c}"]`);
+            if (cell) cell.classList.add("path-cell");
+          });
+        }
+
+        if (savedDirections && savedDirections.length) {
+          document.getElementById("result").innerHTML = `<h3>Directions:</h3><pre>${savedDirections.join(" → ")}</pre>`;
+        }
+
+        document.getElementById("end").value = savedEnd.join(",");
+      }
+    });
+
+    document.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+    });
+  </script>
+</body>
+</html>

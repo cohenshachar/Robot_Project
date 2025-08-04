@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robot Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f7f9fc;
+      margin: 0;
+      padding: 20px;
+      color: #222;
+    }
+    h1, h2, h3 {
+      color: #1a202c;
+    }
+    .section {
+      margin-bottom: 40px;
+    }
+    #charts-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 30px;
+      justify-content: space-around;
+    }
+    .chart-box {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      width: 100%;
+      max-width: 600px;
+    }
+    canvas {
+      width: 100% !important;
+      height: 250px !important;
+    }
+    #pathPlot {
+      width: 100%;
+      height: 600px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      padding: 10px;
+    }
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      color: #888;
+      font-size: 0.9em;
+    }
+
+    #fixed-maze-container {
+      position: fixed;
+      top: 100px;
+      left: 0;
+      width: 280px;
+      max-height: 80vh;
+      overflow-y: auto;
+      background: white;
+      border-radius: 0 12px 12px 0;
+      box-shadow: 4px 0 10px rgba(0, 0, 0, 0.15);
+      padding: 15px;
+      z-index: 1000;
+      transition: transform 0.3s ease;
+    }
+
+    #fixed-maze-container.minimized {
+      transform: translateX(-100%);
+    }
+
+    #mazePreviewToggle {
+      position: fixed;
+      top: 110px;
+      left: 280px;
+      z-index: 1100;
+      background-color: #444;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 0 6px 6px 0;
+      cursor: pointer;
+      transition: left 0.3s ease;
+    }
+
+    #fixed-maze-container.minimized + #mazePreviewToggle {
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+    <div style="margin-bottom: 20px;">
+  <a href="/" style="
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #ddd;
+    color: #333;
+    text-decoration: none;
+    font-weight: bold;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+  " onmouseover="this.style.backgroundColor='#ccc'" onmouseout="this.style.backgroundColor='#ddd'">← Back to Home</a>
+</div>
+  <h1>🤖 Live Robot Dashboard</h1>
+
+  <div id="fixed-maze-container">
+    <h2>🧩 Maze Configuration</h2>
+    <div id="mazePreview"></div>
+  </div>
+  <button id="mazePreviewToggle" onclick="toggleMaze()">⏪</button>
+  
+  
+  
+    <div style="flex: 1 1 65%; min-width: 300px;">
+      <h2>🛼 Path Visualization</h2>
+      <div id="pathPlot" style="height: 600px;"></div>
+    </div>
+  </div>
+  
+  
+  
+  <div class="section">
+    <h2>🚜 Motor Control</h2>
+    <div id="charts-container">
+      <div class="chart-box">
+        <h3>MotorLeft PWM</h3>
+        <canvas id="motorLeftPWM"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>MotorRight PWM</h3>
+        <canvas id="motorRightPWM"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>MotorLeft RPM</h3>
+        <canvas id="motorLeftRPM"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>MotorRight RPM</h3>
+        <canvas id="motorRightRPM"></canvas>
+      </div>
+    </div>
+  </div>
+
+  
+
+  <footer>
+    Last updated: <span id="timestamp"></span>
+  </footer>
+
+  <script>
+    function createLineChart(id, label, color) {
+      return new Chart(document.getElementById(id).getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [{ label, data: [], borderColor: color, fill: false }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Time' },
+  ticks: { callback: function(_, index) {
+              const label = this.getLabelForValue(index);
+              const parts = label.split("-");
+              if (parts.length === 4) {
+                return `${parts[1]}:${parts[2]}:${parts[3].slice(0, 2)}`;
+              }
+              return label;
+            } } },
+            y: {
+              title: { display: true, text: label },
+              suggestedMin: 0,
+              suggestedMax: 255
+            }
+          },
+          animation: false
+        }
+      });
+    }
+
+    function parseAllSessions(raw, parserFunc) {
+      Object.values(raw).forEach(session => {
+        (session || []).forEach(line => {
+          try {
+            const clean = line.replace(/\r$/, '').trim();
+            const obj = typeof clean === 'string' ? JSON.parse(clean) : clean;
+            parserFunc(obj);
+          } catch {}
+        });
+      });
+    }
+
+    const charts = {
+      motorLeftPWM: createLineChart("motorLeftPWM", "PWM", "crimson"),
+      motorRightPWM: createLineChart("motorRightPWM", "PWM", "darkorange"),
+      motorLeftRPM: new Chart(document.getElementById("motorLeftRPM").getContext('2d'), {
+        type: 'line', data: { labels: [], datasets: [
+          { label: 'Current RPM', data: [], borderColor: 'blue', fill: false },
+          { label: 'Target RPM', data: [], borderColor: 'green', fill: false }
+        ]},
+        options: {
+          animation: false, responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Time' },
+  ticks: { callback: function(_, index) {
+              const label = this.getLabelForValue(index);
+              const parts = label.split("-");
+              if (parts.length === 4) {
+                return `${parts[1]}:${parts[2]}:${parts[3].slice(0, 2)}`;
+              }
+              return label;
+            } } },
+            y: {
+              title: { display: true, text: 'RPM' },
+              suggestedMin: 0,
+              suggestedMax: 200
+            }
+          }
+        }
+      }),
+      motorRightRPM: new Chart(document.getElementById("motorRightRPM").getContext('2d'), {
+        type: 'line', data: { labels: [], datasets: [
+          { label: 'Current RPM', data: [], borderColor: 'blue', fill: false },
+          { label: 'Target RPM', data: [], borderColor: 'green', fill: false }
+        ]},
+        options: {
+          animation: false, responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Time' },
+  ticks: { callback: function(_, index) {
+              const label = this.getLabelForValue(index);
+              const parts = label.split("-");
+              if (parts.length === 4) {
+                return `${parts[1]}:${parts[2]}:${parts[3].slice(0, 2)}`;
+              }
+              return label;
+            } } },
+            y: {
+              title: { display: true, text: 'RPM' },
+              suggestedMin: 0,
+              suggestedMax: 200
+            }
+          }
+        }
+      })
+    };
+
+    async function updateChart(chart, url, valueKey = 'pwm') {
+      const res = await fetch(url);
+      const raw = await res.json();
+      const labels = [], values = [];
+
+      parseAllSessions(raw, parsed => {
+        if (parsed.time && parsed[valueKey] !== undefined && !isNaN(parsed[valueKey])) {
+          labels.push(parsed.time);
+          values.push(+parsed[valueKey]);
+        }
+      });
+
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = values;
+      chart.update();
+    }
+
+    async function updateRPMChart(chart, url) {
+      const res = await fetch(url);
+      const raw = await res.json();
+      const labels = [], current = [], target = [];
+
+      parseAllSessions(raw, parsed => {
+        if (parsed.time && !isNaN(parsed.input) && !isNaN(parsed.target)) {
+          labels.push(parsed.time);
+          current.push(+parsed.input);
+          target.push(+parsed.target);
+        }
+      });
+
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = current;
+      chart.data.datasets[1].data = target;
+      chart.update();
+    }
+
+    async function updatePath() {
+      let center = {}, odom = {}, walls = {};
+
+      try {
+        [center, odom, walls] = await Promise.all([
+          fetch('/api/centerline').then(r => r.json()).catch(() => ({})),
+          fetch('/api/odometry').then(r => r.json()).catch(() => ({})),
+          fetch('/api/walls').then(r => r.json()).catch(() => ({}))
+        ]);
+      } catch (err) {
+        console.error("❌ Error fetching path data:", err);
+      }
+
+      const line = [], path = [], lWall = [], rWall = [];
+
+      const parsePoints = (raw, pushTo, keyX, keyY) => {
+        if (!raw || typeof raw !== "object") return;
+        parseAllSessions(raw, p => {
+          const x = p[keyX] ?? p[keyX.toLowerCase()] ?? p[keyX.toUpperCase()];
+          const y = p[keyY] ?? p[keyY.toLowerCase()] ?? p[keyY.toUpperCase()];
+          const time = p.time ?? "";
+          const theta = p.Line_theta ?? p.line_theta ?? p.LINE_THETA ?? null;
+          if (!isNaN(x) && !isNaN(y)) {
+            pushTo.push({ x: +x, y: +y, time, theta });
+          } else {
+            console.warn(`❌ Invalid point for (${keyX}, ${keyY}):`, p);
+          }
+        });
+      };
+
+      parsePoints(center, line, 'Line_x', 'Line_y');
+      parsePoints(odom, path, 'x', 'y');
+      parsePoints(walls, lWall, 'lWall_x', 'lWall_y');
+      parsePoints(walls, rWall, 'rWall_x', 'rWall_y');
+
+      const traces = [];
+
+      if (path.length > 0) {
+        traces.push({
+          x: path.map(p => p.x),
+          y: path.map(p => p.y),
+          mode: 'lines+markers',
+          name: 'Odometry',
+          line: { color: 'green' },
+          marker: { color: 'green' },
+          text: path.map(p => `Time: ${p.time?.split("-").slice(1).join(":")}`),
+          hoverinfo: 'text'
+        });
+      }
+
+      if (line.length > 0) {
+        const centerLineColor = 'orange';  // 🎨 Choose any consistent color
+        traces.push({
+          x: line.map(p => p.x),
+          y: line.map(p => p.y),
+          mode: 'markers',
+          name: 'Center Line',
+          marker: { size: 6, color: centerLineColor },
+          text: line.map(p => `Time: ${p.time?.split("-").slice(1).join(":")}`),
+          hoverinfo: 'text'
+        });
+
+        // ➤ Add directional arrows for Line_theta
+        const arrowScale = 2;
+        const arrowX = [], arrowY = [], arrowU = [], arrowV = [];
+
+        for (const p of line) {
+          if (p.theta != null) {
+            const dx = arrowScale * Math.cos(p.theta);
+            const dy = arrowScale * Math.sin(p.theta);
+            arrowX.push(p.x);
+            arrowY.push(p.y);
+            arrowU.push(p.x + dx);
+            arrowV.push(p.y + dy);
+          }
+        }
+
+        for (let i = 0; i < arrowX.length; i++) {
+          traces.push({
+            x: [arrowX[i], arrowU[i]],
+            y: [arrowY[i], arrowV[i]],
+            mode: 'lines',
+            line: { color: centerLineColor, width: 2 },
+            showlegend: false,
+            hoverinfo: 'none'
+          });
+        }
+      }
+
+      if (lWall.length > 0) {
+        traces.push({
+          x: lWall.map(p => p.x),
+          y: lWall.map(p => p.y),
+          mode: 'markers',
+          name: 'Left Wall',
+          marker: { color: 'red', size: 6 },
+          text: lWall.map(p => `Time: ${p.time?.split("-").slice(1).join(":")}`),
+          hoverinfo: 'text'
+        });
+      }
+
+      if (rWall.length > 0) {
+        traces.push({
+          x: rWall.map(p => p.x),
+          y: rWall.map(p => p.y),
+          mode: 'markers',
+          name: 'Right Wall',
+          marker: { color: 'blue', size: 6 },
+          text: rWall.map(p => `Time: ${p.time?.split("-").slice(1).join(":")}`),
+          hoverinfo: 'text'
+        });
+      }
+
+      if (traces.length === 0) {
+        document.getElementById('pathPlot').innerHTML =
+          "<p style='text-align:center; color:gray;'>No odometry or wall data available.</p>";
+      } else {
+        Plotly.newPlot('pathPlot', traces, {
+          margin: { t: 10 },
+          xaxis: { title: 'X', scaleanchor: 'y' },
+          yaxis: { title: 'Y' },
+          hovermode: 'closest'
+        });
+      }
+    }
+
+
+
+    function refreshAll() {
+      updateChart(charts.motorLeftPWM, '/api/motor_left');
+      updateChart(charts.motorRightPWM, '/api/motor_right');
+      updateRPMChart(charts.motorLeftRPM, '/api/motor_left');
+      updateRPMChart(charts.motorRightRPM, '/api/motor_right');
+      updatePath();
+      document.getElementById("timestamp").textContent = new Date().toLocaleTimeString();
+    }
+
+    refreshAll();
+    setInterval(refreshAll, 2000);
+
+    async function renderMazePreview() {
+      const [gridRes, pathRes, startRes, endRes] = await Promise.all([
+        fetch('/api/maze_grid'),
+        fetch('/api/maze_path'),
+        fetch('/api/maze_start'),
+        fetch('/api/maze_end')
+      ]);
+      const grid = await gridRes.json();
+      const path = await pathRes.json();
+      const start = await startRes.json();  // e.g. [1, 1]
+      const end = await endRes.json();      // e.g. [4, 4]
+
+
+      if (!grid || !grid.length) {
+        document.getElementById("mazePreview").innerHTML = "<p>No maze grid data.</p>";
+        return;
+      }
+
+      const container = document.getElementById("mazePreview");
+      container.innerHTML = ""; // clear previous
+
+      const pathSet = new Set(path.map(([r, c]) => `${r - 1},${c - 1}`));
+      const startKey = start.length === 2 ? `${start[0]-1},${start[1]-1}` : null;
+      const endKey = end.length === 2 ? `${end[0]-1},${end[1]-1}` : null;
+
+
+      grid.forEach((row, i) => {
+        const rowDiv = document.createElement("div");
+        rowDiv.style.display = "flex";
+
+        row.forEach((cell, j) => {
+          const div = document.createElement("div");
+          div.style.width = "30px";
+          div.style.height = "30px";
+          div.style.borderTop = cell.includes("U") ? "2px solid transparent" : "2px solid #000";
+          div.style.borderBottom = cell.includes("D") ? "2px solid transparent" : "2px solid #000";
+          div.style.borderLeft = cell.includes("L") ? "2px solid transparent" : "2px solid #000";
+          div.style.borderRight = cell.includes("R") ? "2px solid transparent" : "2px solid #000";
+          div.style.boxSizing = "border-box";
+          const key = `${i},${j}`;
+          if (key === startKey) {
+            div.style.background = "#d1f4f6"; // light blue
+          } else if (key === endKey) {
+            div.style.background = "#ffe1ec"; // light pink
+          } else if (pathSet.has(key)) {
+            div.style.background = "#ffeb3b"; // yellow
+          } else {
+            div.style.background = "#fdfdfd"; // default
+          }
+
+          rowDiv.appendChild(div);
+        });
+
+        container.appendChild(rowDiv);
+      });
+    }
+
+
+  renderMazePreview();
+
+  function toggleMaze() {
+    const container = document.getElementById('fixed-maze-container');
+    const button = document.getElementById('mazePreviewToggle');
+    container.classList.toggle('minimized');
+    button.textContent = container.classList.contains('minimized') ? 'Maze⏩' : 'Maze⏪';
+  }
+  
+
+  </script>
+</body>
+</html>
