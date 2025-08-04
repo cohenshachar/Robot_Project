@@ -1,12 +1,18 @@
 # Autonomous Maze-Navigating Robot 🤖
 
+## 🎥 Project Demo
+
+Watch the video demonstration of our autonomous maze-navigating robot in action:
+
 [![Watch the demo](https://img.youtube.com/vi/NGwKag2HGF8/0.jpg)](https://www.youtube.com/watch?v=NGwKag2HGF8)
 
 ---
 
 ## Project by:
 **Tali Grayzel** ([taligrayzel](https://github.com/taligrayzel))  
+
 **Nitay Nahary** ([NitayNahary](https://github.com/NitayNahary))
+
 **Shachar Asher Cohen** ([NitayNahary](https://github.com/cohenshachar))
 
 ---
