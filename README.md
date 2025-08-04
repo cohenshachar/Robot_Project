@@ -59,7 +59,7 @@ Built as part of the **ICST Smart Technologies Program** at the **Technion - Tau
 ## 🔌 Connection Diagram
 
 - See `/Documentation/wiring.jpg` for full wiring layout
-- Power: 2S LiPo battery → voltage regulator → ESP32  
+- Power: 5v battery → ESP32  
 - Motors: Controlled via motor driver connected to ESP32 PWM pins  
 - Sensors: I²C ToF sensors mounted front-left, front-center, and front-right
 - See `/Documentation/tasks.png` for  task schedualing timing
