@@ -13,7 +13,7 @@ Watch the video demonstration of our autonomous maze-navigating robot in action:
 
 **Nitay Nahary** ([NitayNahary](https://github.com/NitayNahary))
 
-**Shachar Asher Cohen** ([NitayNahary](https://github.com/cohenshachar))
+**Shachar Asher Cohen** ([cohenshachar](https://github.com/cohenshachar))
 
 ---
 
